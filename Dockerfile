@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install -y software-properties-common && add-apt-r
     libxrender1 \
     ffmpeg \
     openssh-server \
-    && ln -sf /usr/bin/python3.12 /usr/bin/python \&& ln -sf /usr/bin/python3.12 /usr/bin/python \ ln -sf /usr/bin/python3.12 /usr/bin/python \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python \
     && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
     && ln -sf /usr/bin/pip3 /usr/bin/pip
 
