@@ -1,26 +1,19 @@
-# Build argument for base image selection
-ARG BASE_IMAGE=nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+# ComfyUI Refinement Worker for RunPod Serverless
+# CUDA 12.4 (compatible with RunPod us-il-1 driver 550.127.05)
+# Single venv approach — no comfy-cli, no dual venv conflict
 
-# Stage 1: Base image with common dependencies
+ARG BASE_IMAGE=nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 FROM ${BASE_IMAGE} AS base
 
-# Build arguments for this stage with sensible defaults for standalone builds
-ARG COMFYUI_VERSION=latest
-ARG CUDA_VERSION_FOR_COMFY=12.4
-ARG ENABLE_PYTORCH_UPGRADE=false
-ARG PYTORCH_INDEX_URL
-
-# Prevents prompts from packages asking for user input during installation
 ENV DEBIAN_FRONTEND=noninteractive
-# Prefer binary wheels over source distributions for faster pip installations
 ENV PIP_PREFER_BINARY=1
-# Ensures output from python is printed immediately to the terminal without buffering
 ENV PYTHONUNBUFFERED=1
-# Speed up some cmake builds
-ENV CMAKE_BUILD_PARALLEL_LEVEL=8
 
-# Install Python, git and other necessary tools
-RUN apt-get update && apt-get install -y software-properties-common && add-apt-repository -y ppa:deadsnakes/ppa && apt-get update && apt-get install -y \
+# Install Python 3.12 via deadsnakes (not available natively on Ubuntu 22.04)
+RUN apt-get update && apt-get install -y \
+    software-properties-common \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y \
     python3.12 \
     python3.12-venv \
     python3.12-dev \
@@ -35,136 +28,62 @@ RUN apt-get update && apt-get install -y software-properties-common && add-apt-r
     openssh-server \
     && ln -sf /usr/bin/python3.12 /usr/bin/python \
     && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
-    && ln -sf /usr/bin/pip3 /usr/bin/pip
+    && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
-# Clean up to reduce image size
-RUN apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
-
-# Install uv (latest) using official installer and create isolated venv
-RUN wget -qO- https://astral.sh/uv/install.sh | sh \
-    && ln -s /root/.local/bin/uv /usr/local/bin/uv \
-    && ln -s /root/.local/bin/uvx /usr/local/bin/uvx \
-    && uv venv /opt/venv --python python3.12
-
-# Use the virtual environment for all subsequent commands
+# Single virtual environment for everything
+RUN python3.12 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
 
-# Install comfy-cli + dependencies needed by it to install ComfyUI
-RUN uv pip install comfy-cli pip setuptools wheel
+# Upgrade pip
+RUN pip install --upgrade pip setuptools wheel
 
-# Install PyTorch with CUDA 12.4 explicitly
-RUN uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+# Install PyTorch with CUDA 12.4
+RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 
-# Install ComfyUI
-RUN if [ -n "${CUDA_VERSION_FOR_COMFY}" ]; then \
-      /usr/bin/yes | comfy --workspace /comfyui install --version "${COMFYUI_VERSION}" --cuda-version "${CUDA_VERSION_FOR_COMFY}" --nvidia; \
-    else \
-      /usr/bin/yes | comfy --workspace /comfyui install --version "${COMFYUI_VERSION}" --nvidia; \
-    fi
+# Install ComfyUI via git clone (not comfy-cli)
+RUN git clone https://github.com/comfyanonymous/ComfyUI.git /comfyui \
+    && cd /comfyui && pip install -r requirements.txt
 
-# Upgrade PyTorch if needed (for newer CUDA versions)
-RUN if [ "$ENABLE_PYTORCH_UPGRADE" = "true" ]; then \
-      uv pip install --force-reinstall torch torchvision torchaudio --index-url ${PYTORCH_INDEX_URL}; \
-    fi
+# Install ComfyUI-Manager
+RUN cd /comfyui/custom_nodes \
+    && git clone https://github.com/ltdrdata/ComfyUI-Manager.git \
+    && cd ComfyUI-Manager && pip install -r requirements.txt || true
 
-# Change working directory to ComfyUI
-WORKDIR /comfyui
+# Install Impact-Pack for ADetailer/FaceDetailer
+RUN cd /comfyui/custom_nodes \
+    && git clone https://github.com/ltdrdata/ComfyUI-Impact-Pack.git \
+    && cd ComfyUI-Impact-Pack && pip install -r requirements.txt || true
 
-# Support for the network volume
-ADD src/extra_model_paths.yaml ./
+# Install handler dependencies
+RUN pip install runpod requests websocket-client
 
-# Go back to the root
-WORKDIR /
-
-# Install Python runtime dependencies for the handler
-RUN uv pip install runpod requests websocket-client
-
-# Add application code and scripts
-ADD src/start.sh src/network_volume.py handler.py test_input.json ./
-RUN chmod +x /start.sh
-
-# Add script to install custom nodes
-COPY scripts/comfy-node-install.sh /usr/local/bin/comfy-node-install
-RUN chmod +x /usr/local/bin/comfy-node-install
-
-# Install Impact-Pack custom node for ADetailer/FaceDetailer
-RUN cd /comfyui/custom_nodes && git clone https://github.com/ltdrdata/ComfyUI-Impact-Pack.git && cd ComfyUI-Impact-Pack && /comfyui/.venv/bin/pip install -r requirements.txt
-
-# Download YOLO detection models for face/hand/nipple detection
-RUN mkdir -p /comfyui/models/ultralytics/bbox && \
-    wget -q -O /comfyui/models/ultralytics/bbox/face_yolov8n.pt \
-       "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8n.pt" && \
-    wget -q -O /comfyui/models/ultralytics/bbox/hand_yolov8s.pt \
-       "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt" && \
-    wget -q -O /comfyui/models/ultralytics/bbox/nipples_yolov8s.pt \
+# Download YOLO detection models
+RUN mkdir -p /comfyui/models/ultralytics/bbox \
+    && wget -q -O /comfyui/models/ultralytics/bbox/face_yolov8n.pt \
+       "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8n.pt" \
+    && wget -q -O /comfyui/models/ultralytics/bbox/hand_yolov8s.pt \
+       "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt" \
+    && wget -q -O /comfyui/models/ultralytics/bbox/nipples_yolov8s.pt \
        "https://huggingface.co/ashllay/YOLO_Models/resolve/main/bbox/nipples_yolov8s.pt"
 
 # Download 4x-UltraSharp upscale model
-RUN mkdir -p /comfyui/models/upscale_models && \
-    wget -q -O /comfyui/models/upscale_models/4x-UltraSharp.pth \
+RUN mkdir -p /comfyui/models/upscale_models \
+    && wget -q -O /comfyui/models/upscale_models/4x-UltraSharp.pth \
        "https://huggingface.co/lokCX/4x-Ultrasharp/resolve/main/4x-UltraSharp.pth"
 
-# Prevent pip from asking for confirmation during uninstall steps in custom nodes
+# Add extra model paths for network volume
+WORKDIR /comfyui
+COPY src/extra_model_paths.yaml ./
+
+# Add handler and startup scripts
+WORKDIR /
+COPY src/start.sh src/network_volume.py handler.py test_input.json ./
+RUN chmod +x /start.sh
+COPY scripts/comfy-manager-set-mode.sh /usr/local/bin/comfy-manager-set-mode
+RUN chmod +x /usr/local/bin/comfy-manager-set-mode || true
+
+# Prevent pip from asking for confirmation
 ENV PIP_NO_INPUT=1
 
-# Copy helper script to switch Manager network mode at container start
-COPY scripts/comfy-manager-set-mode.sh /usr/local/bin/comfy-manager-set-mode
-RUN chmod +x /usr/local/bin/comfy-manager-set-mode
-
-# Set the default command to run when starting the container
-CMD ["/start.sh"]
-
-# Stage 2: Download models
-FROM base AS downloader
-
-ARG HUGGINGFACE_ACCESS_TOKEN
-# Set default model type if none is provided
-ARG MODEL_TYPE=flux1-dev-fp8
-
-# Change working directory to ComfyUI
 WORKDIR /comfyui
-
-# Create necessary directories upfront
-RUN mkdir -p models/checkpoints models/vae models/unet models/clip models/text_encoders models/diffusion_models models/model_patches
-
-# Download checkpoints/vae/unet/clip models to include in image based on model type
-RUN if [ "$MODEL_TYPE" = "sdxl" ]; then \
-      wget -q -O models/checkpoints/sd_xl_base_1.0.safetensors https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors && \
-      wget -q -O models/vae/sdxl_vae.safetensors https://huggingface.co/stabilityai/sdxl-vae/resolve/main/sdxl_vae.safetensors && \
-      wget -q -O models/vae/sdxl-vae-fp16-fix.safetensors https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/resolve/main/sdxl_vae.safetensors; \
-    fi
-
-RUN if [ "$MODEL_TYPE" = "sd3" ]; then \
-      wget -q --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/checkpoints/sd3_medium_incl_clips_t5xxlfp8.safetensors https://huggingface.co/stabilityai/stable-diffusion-3-medium/resolve/main/sd3_medium_incl_clips_t5xxlfp8.safetensors; \
-    fi
-
-RUN if [ "$MODEL_TYPE" = "flux1-schnell" ]; then \
-      wget -q --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/unet/flux1-schnell.safetensors https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/flux1-schnell.safetensors && \
-      wget -q -O models/clip/clip_l.safetensors https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors && \
-      wget -q -O models/clip/t5xxl_fp8_e4m3fn.safetensors https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors && \
-      wget -q --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/vae/ae.safetensors https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/ae.safetensors; \
-    fi
-
-RUN if [ "$MODEL_TYPE" = "flux1-dev" ]; then \
-      wget -q --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/unet/flux1-dev.safetensors https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/flux1-dev.safetensors && \
-      wget -q -O models/clip/clip_l.safetensors https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors && \
-      wget -q -O models/clip/t5xxl_fp8_e4m3fn.safetensors https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors && \
-      wget -q --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/vae/ae.safetensors https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/ae.safetensors; \
-    fi
-
-RUN if [ "$MODEL_TYPE" = "flux1-dev-fp8" ]; then \
-      wget -q -O models/checkpoints/flux1-dev-fp8.safetensors https://huggingface.co/Comfy-Org/flux1-dev/resolve/main/flux1-dev-fp8.safetensors; \
-    fi
-
-RUN if [ "$MODEL_TYPE" = "z-image-turbo" ]; then \
-      wget -q --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/text_encoders/qwen_3_4b.safetensors https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors && \
-      wget -q --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/diffusion_models/z_image_turbo_bf16.safetensors https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors && \
-      wget -q --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/vae/ae.safetensors https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors && \
-      wget -q --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/model_patches/Z-Image-Turbo-Fun-Controlnet-Union.safetensors https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union/resolve/main/Z-Image-Turbo-Fun-Controlnet-Union.safetensors; \
-    fi
-
-# Stage 3: Final image
-FROM base AS final
-
-# Copy models from stage 2 to the final image
-COPY --from=downloader /comfyui/models /comfyui/models
+CMD ["/start.sh"]
