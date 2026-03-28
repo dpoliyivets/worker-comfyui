@@ -1,5 +1,5 @@
 # Build argument for base image selection
-ARG BASE_IMAGE=nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04
+ARG BASE_IMAGE=nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
 # Stage 1: Base image with common dependencies
 FROM ${BASE_IMAGE} AS base
@@ -81,6 +81,23 @@ RUN chmod +x /start.sh
 # Add script to install custom nodes
 COPY scripts/comfy-node-install.sh /usr/local/bin/comfy-node-install
 RUN chmod +x /usr/local/bin/comfy-node-install
+
+# Install Impact-Pack custom node for ADetailer/FaceDetailer
+RUN comfy-node-install ComfyUI-Impact-Pack
+
+# Download YOLO detection models for face/hand/nipple detection
+RUN mkdir -p /comfyui/models/ultralytics/bbox && \
+    wget -q -O /comfyui/models/ultralytics/bbox/face_yolov8n.pt \
+       "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8n.pt" && \
+    wget -q -O /comfyui/models/ultralytics/bbox/hand_yolov8s.pt \
+       "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt" && \
+    wget -q -O /comfyui/models/ultralytics/bbox/nipples_yolov8s.pt \
+       "https://huggingface.co/ashllay/YOLO_Models/resolve/main/bbox/nipples_yolov8s.pt"
+
+# Download 4x-UltraSharp upscale model
+RUN mkdir -p /comfyui/models/upscale_models && \
+    wget -q -O /comfyui/models/upscale_models/4x-UltraSharp.pth \
+       "https://huggingface.co/lokCX/4x-Ultrasharp/resolve/main/4x-UltraSharp.pth"
 
 # Prevent pip from asking for confirmation during uninstall steps in custom nodes
 ENV PIP_NO_INPUT=1
