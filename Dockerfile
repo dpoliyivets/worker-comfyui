@@ -50,9 +50,16 @@ RUN cd /comfyui/custom_nodes \
     && cd ComfyUI-Manager && pip install -r requirements.txt || true
 
 # Install Impact-Pack for ADetailer/FaceDetailer
+# Must init submodules — Impact-Subpack provides UltralyticsDetectorProvider
 RUN cd /comfyui/custom_nodes \
     && git clone https://github.com/ltdrdata/ComfyUI-Impact-Pack.git \
-    && cd ComfyUI-Impact-Pack && pip install -r requirements.txt || true
+    && cd ComfyUI-Impact-Pack \
+    && git submodule update --init --recursive \
+    && pip install -r requirements.txt \
+    && if [ -f impact_subpack/requirements.txt ]; then pip install -r impact_subpack/requirements.txt; fi
+
+# Ensure ultralytics is installed (required for UltralyticsDetectorProvider)
+RUN pip install ultralytics
 
 # Install handler dependencies
 RUN pip install runpod requests websocket-client
