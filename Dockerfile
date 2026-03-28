@@ -49,16 +49,17 @@ RUN cd /comfyui/custom_nodes \
     && git clone https://github.com/ltdrdata/ComfyUI-Manager.git \
     && cd ComfyUI-Manager && pip install -r requirements.txt || true
 
-# Install Impact-Pack for ADetailer/FaceDetailer
-# Must init submodules — Impact-Subpack provides UltralyticsDetectorProvider
+# Install Impact-Pack for FaceDetailer/DetailerForEach
 RUN cd /comfyui/custom_nodes \
     && git clone https://github.com/ltdrdata/ComfyUI-Impact-Pack.git \
-    && cd ComfyUI-Impact-Pack \
-    && git submodule update --init --recursive \
-    && pip install -r requirements.txt \
-    && if [ -f impact_subpack/requirements.txt ]; then pip install -r impact_subpack/requirements.txt; fi
+    && cd ComfyUI-Impact-Pack && pip install -r requirements.txt || true
 
-# Ensure ultralytics is installed (required for UltralyticsDetectorProvider)
+# Install Impact-Subpack — provides UltralyticsDetectorProvider (moved out of main pack in V8+)
+RUN cd /comfyui/custom_nodes \
+    && git clone https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git \
+    && cd ComfyUI-Impact-Subpack && pip install -r requirements.txt || true
+
+# Ensure ultralytics is installed (required for UltralyticsDetectorProvider YOLO loading)
 RUN pip install ultralytics
 
 # Install handler dependencies
@@ -73,10 +74,17 @@ RUN mkdir -p /comfyui/models/ultralytics/bbox \
     && wget -q -O /comfyui/models/ultralytics/bbox/nipples_yolov8s.pt \
        "https://huggingface.co/ashllay/YOLO_Models/resolve/main/bbox/nipples_yolov8s.pt"
 
-# Download 4x-UltraSharp upscale model
+# Download upscale models
 RUN mkdir -p /comfyui/models/upscale_models \
     && wget -q -O /comfyui/models/upscale_models/4x-UltraSharp.pth \
-       "https://huggingface.co/lokCX/4x-Ultrasharp/resolve/main/4x-UltraSharp.pth"
+       "https://huggingface.co/lokCX/4x-Ultrasharp/resolve/main/4x-UltraSharp.pth" \
+    && wget -q -O /comfyui/models/upscale_models/4x_foolhardy_Remacri.pth \
+       "https://huggingface.co/FacehugmanIII/4x_foolhardy_Remacri/resolve/main/4x_foolhardy_Remacri.pth"
+
+# Download CodeFormer face restoration model (final face cleanup after upscaling)
+RUN mkdir -p /comfyui/models/facerestore_models \
+    && wget -q -O /comfyui/models/facerestore_models/codeformer-v0.1.0.pth \
+       "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth"
 
 # Add extra model paths for network volume
 WORKDIR /comfyui
