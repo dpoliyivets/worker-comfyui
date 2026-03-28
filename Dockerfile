@@ -88,7 +88,7 @@ COPY scripts/comfy-node-install.sh /usr/local/bin/comfy-node-install
 RUN chmod +x /usr/local/bin/comfy-node-install
 
 # Install Impact-Pack custom node for ADetailer/FaceDetailer
-RUN comfy-node-install ComfyUI-Impact-Pack
+RUN cd /comfyui/custom_nodes && git clone https://github.com/ltdrdata/ComfyUI-Impact-Pack.git && cd ComfyUI-Impact-Pack && /comfyui/.venv/bin/pip install -r requirements.txt
 
 # Download YOLO detection models for face/hand/nipple detection
 RUN mkdir -p /comfyui/models/ultralytics/bbox && \
