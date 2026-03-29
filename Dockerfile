@@ -81,6 +81,11 @@ RUN mkdir -p /comfyui/models/upscale_models \
     && wget -q -O /comfyui/models/upscale_models/4x_foolhardy_Remacri.pth \
        "https://huggingface.co/FacehugmanIII/4x_foolhardy_Remacri/resolve/main/4x_foolhardy_Remacri.pth"
 
+# Download SAM model for precise segmentation masking in FaceDetailer
+RUN mkdir -p /comfyui/models/sams \
+    && wget -q -O /comfyui/models/sams/sam_vit_b_01ec64.pth \
+       "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
+
 # Download CodeFormer face restoration model (final face cleanup after upscaling)
 RUN mkdir -p /comfyui/models/facerestore_models \
     && wget -q -O /comfyui/models/facerestore_models/codeformer-v0.1.0.pth \
