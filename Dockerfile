@@ -65,8 +65,8 @@ RUN pip install ultralytics
 # Install handler dependencies
 RUN pip install runpod requests websocket-client
 
-# Download YOLO detection models
-RUN mkdir -p /comfyui/models/ultralytics/bbox \
+# Download YOLO detection models (bbox + segmentation)
+RUN mkdir -p /comfyui/models/ultralytics/bbox /comfyui/models/ultralytics/segm \
     && wget -q -O /comfyui/models/ultralytics/bbox/face_yolov8n.pt \
        "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8n.pt" \
     && wget -q -O /comfyui/models/ultralytics/bbox/hand_yolov8s.pt \
@@ -74,12 +74,17 @@ RUN mkdir -p /comfyui/models/ultralytics/bbox \
     && wget -q -O /comfyui/models/ultralytics/bbox/nipples_yolov8s.pt \
        "https://huggingface.co/ashllay/YOLO_Models/resolve/main/bbox/nipples_yolov8s.pt"
 
+# Copy nipple segmentation model (ADetailer Nipples v2.0 YOLO11s-seg, from CivitAI #490259)
+COPY assets/nipples_v2_yolov11s-seg.pt /comfyui/models/ultralytics/segm/nipples_v2_yolov11s-seg.pt
+
 # Download upscale models
 RUN mkdir -p /comfyui/models/upscale_models \
     && wget -q -O /comfyui/models/upscale_models/4x-UltraSharp.pth \
        "https://huggingface.co/lokCX/4x-Ultrasharp/resolve/main/4x-UltraSharp.pth" \
     && wget -q -O /comfyui/models/upscale_models/4x_foolhardy_Remacri.pth \
-       "https://huggingface.co/FacehugmanIII/4x_foolhardy_Remacri/resolve/main/4x_foolhardy_Remacri.pth"
+       "https://huggingface.co/FacehugmanIII/4x_foolhardy_Remacri/resolve/main/4x_foolhardy_Remacri.pth" \
+    && wget -q -O /comfyui/models/upscale_models/RealESRGAN_x2plus.pth \
+       "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth"
 
 # Download SAM model for precise segmentation masking in FaceDetailer
 RUN mkdir -p /comfyui/models/sams \
