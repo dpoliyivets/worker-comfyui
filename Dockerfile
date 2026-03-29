@@ -70,9 +70,7 @@ RUN mkdir -p /comfyui/models/ultralytics/bbox /comfyui/models/ultralytics/segm \
     && wget -q -O /comfyui/models/ultralytics/bbox/face_yolov8n.pt \
        "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8n.pt" \
     && wget -q -O /comfyui/models/ultralytics/bbox/hand_yolov8s.pt \
-       "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt" \
-    && wget -q -O /comfyui/models/ultralytics/bbox/nipples_yolov8s.pt \
-       "https://huggingface.co/ashllay/YOLO_Models/resolve/main/bbox/nipples_yolov8s.pt"
+       "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt"
 
 # Copy nipple segmentation model (ADetailer Nipples v2.0 YOLO11s-seg, from CivitAI #490259)
 COPY assets/nipples_v2_yolov11s-seg.pt /comfyui/models/ultralytics/segm/nipples_v2_yolov11s-seg.pt
