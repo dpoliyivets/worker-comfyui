@@ -55,19 +55,40 @@ echo "worker-comfyui: Starting ComfyUI"
 # Allow operators to tweak verbosity; default is DEBUG.
 : "${COMFY_LOG_LEVEL:=DEBUG}"
 
-# PID file used by the handler to detect if ComfyUI is still running
+# PID file used by the handler to detect if ComfyUI is still running.
+#
+# The handler's check_server() polls /tmp/comfyui.pid to decide whether to
+# wait indefinitely for ComfyUI (PID found → poll until process dies) or fall
+# back to a 500-attempt retry limit (no PID → ~25s hard timeout). The bounded
+# fallback has proven too short for flaky RunPod workers with slow cold
+# starts, so it's critical that the PID file always reflects the CURRENT
+# ComfyUI process before the handler starts.
+#
+# Two defensive measures below:
+#   1. Remove any stale PID file from a previous container lifetime so the
+#      handler can never observe a PID pointing at a dead process.
+#   2. Write the new PID via a temp file + atomic rename so the handler can
+#      never observe a half-written or zero-byte file.
 COMFY_PID_FILE="/tmp/comfyui.pid"
+COMFY_PID_FILE_TMP="${COMFY_PID_FILE}.tmp"
+rm -f "$COMFY_PID_FILE" "$COMFY_PID_FILE_TMP"
+
+write_comfy_pid_file() {
+    local pid="$1"
+    echo "$pid" > "$COMFY_PID_FILE_TMP"
+    mv "$COMFY_PID_FILE_TMP" "$COMFY_PID_FILE"
+}
 
 # Serve the API and don't shutdown the container
 if [ "$SERVE_API_LOCALLY" == "true" ]; then
     python -u /comfyui/main.py --disable-auto-launch --disable-metadata --listen --verbose "${COMFY_LOG_LEVEL}" --log-stdout --extra-model-paths-config /comfyui/extra_model_paths.yaml &
-    echo $! > "$COMFY_PID_FILE"
+    write_comfy_pid_file "$!"
 
     echo "worker-comfyui: Starting RunPod Handler"
     python -u /handler.py --rp_serve_api --rp_api_host=0.0.0.0
 else
     python -u /comfyui/main.py --disable-auto-launch --disable-metadata --verbose "${COMFY_LOG_LEVEL}" --log-stdout --extra-model-paths-config /comfyui/extra_model_paths.yaml &
-    echo $! > "$COMFY_PID_FILE"
+    write_comfy_pid_file "$!"
 
     echo "worker-comfyui: Starting RunPod Handler"
     python -u /handler.py

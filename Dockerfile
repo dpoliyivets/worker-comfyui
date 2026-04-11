@@ -9,6 +9,23 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PIP_PREFER_BINARY=1
 ENV PYTHONUNBUFFERED=1
 
+# ---------------------------------------------------------------------------
+# ComfyUI startup wait defaults
+#
+# handler.py's check_server() falls back to a bounded retry loop when it
+# can't determine whether ComfyUI is still alive from the PID file. With the
+# upstream defaults (50ms interval × 500 attempts = 25s) flaky RunPod workers
+# with slow cold starts routinely miss the window and fail with "ComfyUI
+# server (127.0.0.1:8188) not reachable after multiple retries."
+#
+# Bumping the interval to 100ms and the retry cap to 2000 gives a ~200s
+# fallback window, which covers every real-world cold start we've observed
+# while still failing fast on a truly broken worker. Operators can override
+# either value at the RunPod endpoint level without rebuilding this image.
+# ---------------------------------------------------------------------------
+ENV COMFY_API_AVAILABLE_INTERVAL_MS=100
+ENV COMFY_API_AVAILABLE_MAX_RETRIES=2000
+
 # Install Python 3.12 via deadsnakes (not available natively on Ubuntu 22.04)
 RUN apt-get update && apt-get install -y \
     software-properties-common \
