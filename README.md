@@ -191,3 +191,5 @@ To enable SSH access to the worker, set the `PUBLIC_KEY` environment variable to
 - **[Development Guide](docs/development.md):** Setting up a local environment for development & testing
 - **[CI/CD Guide](docs/ci-cd.md):** Information about the automated Docker build and publish workflows.
 - **[Acknowledgments](docs/acknowledgments.md):** Credits and thanks
+
+<!-- Build trigger: 2026-04-13 — re-fire RunPod auto-build to recover refinement endpoint -->
